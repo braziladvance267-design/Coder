@@ -1,0 +1,89 @@
+name: NEW REPO - NEW KEY - TAILSCALE RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp_tailscale:
+    runs-on: windows-latest
+    timeout-minutes: 360 
+
+    env:
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }} # ENSURE THIS IS THE NEW KEY!
+      RDP_USER: coder_fresh
+      RDP_PASS: ${{ secrets.ADMIN_PASS }} 
+      RDP_PORT: 3389
+
+    steps:
+      
+      # 1. Setup Admin Credentials
+      - name: 🛠️ Setup Admin User
+        run: |
+          net user $env:RDP_USER $env:RDP_PASS /add /y
+          net localgroup Administrators $env:RDP_USER /add
+          net localgroup "Remote Desktop Users" $env:RDP_USER /add
+        shell: powershell
+        
+      # 2. RDP Security Fixes (Reset to Strongest Compatibility)
+      - name: ⚙️ RDP Security Reset for Tailscale
+        run: |
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0 # NLA Disable
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "SecurityLayer" -Value 0 # RDP Protocol Security
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "MinEncryptionLevel" -Value 1 # Low Encryption for Compatibility
+          Restart-Service -Name TermService -Force
+        shell: powershell
+        
+      # 3. 🛠️ CORE TOOLS: Install Tailscale, WSL, Kali Linux
+      - name: 💻 Install Tools and Kali Linux
+        run: |
+          # Tailscale, VS Code, Node.js
+          choco install tailscale visualstudiocode nodejs -y --no-progress
+          
+          # Kali Linux Installation
+          dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+          dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+          Invoke-WebRequest -Uri https://aka.ms/wsl-kali-linux-new -OutFile C:\temp\Kali-Linux.appx
+          Add-AppxPackage C:\temp\Kali-Linux.appx
+          wsl --set-default-version 2
+          
+          Start-Sleep -Seconds 30 
+        shell: powershell
+        
+      # 4. Connect to Tailscale Network (As Exit Node for best routing)
+      - name: 🔒 Connect to Tailscale Network (NEW KEY)
+        run: |
+          Start-Sleep -Seconds 20 
+          # Exit Node का उपयोग करें (Tailscale routing को मजबूर करने के लिए)
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TAILSCALE_AUTHKEY" --hostname="clean-rdp-node" --accept-routes --advertise-exit-node
+          Start-Sleep -Seconds 10 
+        shell: powershell
+        
+      # 5. Configure Firewall and Get IP (Strong Firewall Rule)
+      - name: 🛡️ RDP Firewall Override and Get IP
+        run: |
+          # Tailscale IP के लिए कठोर फ़ायरवॉल नियम
+          New-NetFirewallRule -DisplayName 'RDP_TAILSCALE_OVERRIDE_TCP' -Direction Inbound -LocalPort $env:RDP_PORT -Protocol TCP -Action Allow -Profile Any -RemoteAddress Any
+          
+          $TS_IP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4)
+          echo "TS_IP=$TS_IP" | Out-File -FilePath $env:GITHUB_ENV -Append
+        shell: powershell
+        
+      # 6. Display Connection Details 
+      - name: 🖥️ Display Connection Details 
+        shell: bash
+        run: |
+          echo "********************************************************"
+          echo "  ✅ NEW REPO / NEW KEY RDP READY ✅"
+          echo "********************************************************"
+          echo "🔥 Tailscale IP: ${TS_IP}"
+          echo "🌐 RDP Port:     ${RDP_PORT}"
+          echo "👤 Username:      ${RDP_USER}"
+          echo "🔑 Password:      (Secret: ADMIN_PASS)"
+          echo "********************************************************"
+          echo "🚨 RDP से कनेक्ट करने से पहले, अपने मोबाइल पर Exit Node को इनेबल करें।"
+        
+      # 7. Keep Session Alive
+      - name: ⏳ Keep Session Alive
+        run: Start-Sleep 21600
+        shell: powershell
