@@ -1,21 +1,22 @@
-name: TAILSCALE RDP - FIXING 'INITIATING CONNECTION' (FINAL ATTEMPT)
+name: ULTIMATE RDP ACCESS WITH TAILSCALE & KALI (V2.0 FIX)
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp_tailscale:
+  rdp_tailscale_kali:
     runs-on: windows-latest
     timeout-minutes: 360 
 
     env:
-      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }} # NEW KEY HERE
-      RDP_USER: coder_fresh
-      RDP_PASS: ${{ secrets.ADMIN_PASS }} # Strong password (e.g., GITHUB@CODER1)
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }} 
+      RDP_USER: coder_wsl
+      RDP_PASS: ${{ secrets.ADMIN_PASS }} 
+      TS_HOSTNAME: fixed-runner-${{ github.run_id }}
 
     steps:
       
-      # 1. Setup Admin Credentials (Must be strong)
+      # 1. Setup Admin Credentials
       - name: 🛠️ Setup Admin User
         run: |
           net user $env:RDP_USER $env:RDP_PASS /add /y
@@ -23,38 +24,49 @@ jobs:
           net localgroup "Remote Desktop Users" $env:RDP_USER /add
         shell: powershell
         
-      # 2. 🛡️ RDP Security Fixes (Crucial for new VM image)
+      # 2. 🛡️ RDP Security Fixes 
       - name: ⚙️ Reset RDP Security Settings
         run: |
-          # NLA (Network Level Authentication) को डिसेबल करें - RDP fail होने का मुख्य कारण
           Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0 
-          # RDP कनेक्शन स्वीकार करने के लिए VM को कॉन्फ़िगर करें
           Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Restart-Service -Name TermService -Force
         shell: powershell
 
-      # 3. 🛠️ Install Tailscale and Kali Linux
-      - name: 💻 Install Tools, Tailscale and Kali Linux
+      # 3. 💻 Install VS Code and Tailscale (Added VS Code)
+      - name: 💻 Install VS Code, Tailscale and Dependencies
         run: |
+          # VS Code for Remote Access (Optional but useful)
+          choco install vscode -y --no-progress
+          
+          # Install Tailscale
           choco install tailscale -y --no-progress
           
-          # Kali Linux Setup...
+          # Enable WSL features
           dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
-          # ... (rest of Kali setup)
-          
+          dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
           Start-Sleep -Seconds 30 
         shell: powershell
         
-      # 4. Connect to Tailscale Network 
+      # 4. Install Kali Linux (WSL)
+      - name: 🐧 Install Kali Linux Distribution
+        run: |
+          Invoke-WebRequest -Uri https://aka.ms/wsl-kali-linux-new -OutFile C:\temp\Kali-Linux.appx
+          Add-AppxPackage C:\temp\Kali-Linux.appx
+          wsl --set-default-version 2
+          Start-Sleep -Seconds 45 
+        shell: powershell
+        
+      # 5. Connect to Tailscale Network (FIXED ERROR HERE)
       - name: 🔒 Connect to Tailscale Network 
         run: |
-          Start-Service -Name Tailscale -Force
+          # ERROR FIX: Removed -Force from Start-Service
+          Start-Service -Name Tailscale 
           Start-Sleep -Seconds 5
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TAILSCALE_AUTHKEY" --hostname="rdp-fresh-fix"
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TAILSCALE_AUTHKEY" --hostname="$env:TS_HOSTNAME"
           Start-Sleep -Seconds 10 
         shell: powershell
         
-      # 5. Get IP and Display Details 
+      # 6. Get IP and Display Details 
       - name: 🖥️ Display Connection Details 
         run: |
           $TS_IP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4)
@@ -64,16 +76,16 @@ jobs:
         shell: bash
         run: |
           echo "********************************************************"
-          echo "  ✅ TAILSCALE RDP ACCESS READY ✅"
+          echo "  ✅ RDP + KALI LINUX ACCESS READY (FINAL FIX) ✅"
           echo "********************************************************"
           echo "🔥 Tailscale IP: ${TS_IP}"
           echo "🌐 RDP Port:     3389"
-          echo "👤 User: ${RDP_USER}"
-          echo "🔑 Pass: (Secret: ADMIN_PASS)"
+          echo "👤 RDP User:     ${RDP_USER}"
+          echo "🔑 RDP Pass:     (Secret: ADMIN_PASS)"
           echo "********************************************************"
-          echo "🚨 Important: Mobile पर Tailscale App चालू होना चाहिए!"
+          echo "💡 Kali: Open RDP/CMD and type 'wsl'. VS Code is also installed."
         
-      # 6. Keep Session Alive
+      # 7. Keep Session Alive
       - name: ⏳ Keep Session Alive
         run: Start-Sleep 21600
         shell: powershell
